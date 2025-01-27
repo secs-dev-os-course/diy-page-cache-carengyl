@@ -43,9 +43,12 @@ TEST_F(BlockCacheTest, WriteData) {
     HANDLE file = lab2_open(test_file.c_str());
     ASSERT_NE(file, INVALID_HANDLE_VALUE);
 
-    const char data[BLOCK_SIZE] = "Hello, World!";
-    ssize_t bytes_written = lab2_write(file, data, sizeof(data));
-    EXPECT_EQ(bytes_written, sizeof(data));
+    const char data[] = "Hello, World!";
+    ssize_t bytes_written = lab2_write(file, data, strlen(data)); 
+    EXPECT_EQ(bytes_written, strlen(data));
+
+    // Синхронизируем данные
+    EXPECT_EQ(lab2_fsync(file), 0);
 
     // Перемещаем указатель и читаем снова
     LARGE_INTEGER offset = {};
