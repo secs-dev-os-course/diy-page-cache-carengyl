@@ -28,11 +28,16 @@ private:
         if (cache_list.empty()) return;
 
         auto it = cache_list.back();
+        std::cout << "Evicting block: " << it.first << std::endl;
+        
+        // Если блок грязный, записываем его в файл
         if (it.second.dirty) {
             DWORD written;
             SetFilePointerEx(it.second.file_handle, it.second.offset, nullptr, FILE_BEGIN);
             WriteFile(it.second.file_handle, it.second.data.data(), BLOCK_SIZE, &written, nullptr);
+            std::cout << "Written dirty block to disk: " << it.first << std::endl;
         }
+
         cache_map.erase(it.first);
         cache_list.pop_back();
     }
@@ -68,6 +73,7 @@ public:
         cache_list.emplace_front(key, block);
         cache_map[key] = cache_list.begin();
 
+        std::cout << "Loaded block from disk: " << key << std::endl;
         return &cache_list.begin()->second;
     }
 
@@ -76,6 +82,7 @@ public:
         LONGLONG key = offset.QuadPart;
         if (cache_map.find(key) != cache_map.end()) {
             cache_map[key]->second.dirty = true;
+            std::cout << "Marking block as dirty: " << key << std::endl;
         }
     }
 
@@ -86,6 +93,7 @@ public:
                 DWORD written;
                 SetFilePointerEx(it->second.file_handle, it->second.offset, nullptr, FILE_BEGIN);
                 WriteFile(it->second.file_handle, it->second.data.data(), BLOCK_SIZE, &written, nullptr);
+                std::cout << "Syncing dirty block to disk: " << it->first << std::endl;
                 it->second.dirty = false;
             }
             ++it;
@@ -111,7 +119,8 @@ extern "C" {
         while (count > 0) {
             LARGE_INTEGER offset;
             offset.QuadPart = SetFilePointerEx(file, {0}, &offset, FILE_CURRENT);
-            LARGE_INTEGER block_offset = { offset.QuadPart / BLOCK_SIZE * BLOCK_SIZE };
+            LARGE_INTEGER block_offset;
+            block_offset.QuadPart = (offset.QuadPart / BLOCK_SIZE) * BLOCK_SIZE;
 
             CacheBlock* block = global_cache.get_block(file, block_offset);
             size_t block_start = offset.QuadPart % BLOCK_SIZE;
@@ -134,14 +143,15 @@ extern "C" {
         while (count > 0) {
             LARGE_INTEGER offset;
             offset.QuadPart = SetFilePointerEx(file, {0}, &offset, FILE_CURRENT);
-            LARGE_INTEGER block_offset = { offset.QuadPart / BLOCK_SIZE * BLOCK_SIZE };
+            LARGE_INTEGER block_offset;
+            block_offset.QuadPart = (offset.QuadPart / BLOCK_SIZE) * BLOCK_SIZE;
 
             CacheBlock* block = global_cache.get_block(file, block_offset);
             size_t block_start = offset.QuadPart % BLOCK_SIZE;
             size_t to_write = std::min(count, BLOCK_SIZE - block_start);
 
             memcpy(block->data.data() + block_start, buf, to_write);
-            block->dirty = true;
+            block->dirty = true; // Отметка блока как грязного
 
             buf = (const char*)buf + to_write;
             count -= to_write;
